@@ -3,463 +3,456 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Juego 2D</title>
+  <title>Isla de madera</title>
   <style>
-    :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --accent: #fbbf24;
-      --text: #e5e7eb;
-      --muted: #cbd5e1;
-      --green: #34d399;
-      --red: #ef4444;
-      --gold: #facc15;
-    }
-
     * {
       box-sizing: border-box;
     }
 
     body {
-      margin: 0;
       min-height: 100vh;
-      background: linear-gradient(180deg, #020817, var(--bg));
-      color: var(--text);
-      font-family: Arial, sans-serif;
+      margin: 0;
       display: grid;
       place-items: center;
+      background: #0b2540;
+      color: #f8fafc;
+      font-family: Arial, sans-serif;
     }
 
-    .panel {
+    main {
+      width: min(960px, 100%);
+      padding: 20px;
       text-align: center;
-      max-width: 900px;
-      width: 100%;
-      padding: 24px;
     }
 
     h1 {
       margin: 0 0 8px;
-      color: var(--accent);
-      font-size: 2.2rem;
+      color: #fde68a;
     }
 
     p {
-      margin: 0 0 18px;
-      color: var(--muted);
+      margin: 8px 0 14px;
+      color: #dbeafe;
     }
 
-    .controls {
-      margin-bottom: 18px;
+    .hud {
       display: flex;
       justify-content: center;
       gap: 12px;
-      flex-wrap: wrap;
+      margin-bottom: 10px;
     }
 
-    button {
-      border: none;
-      border-radius: 10px;
-      padding: 12px 20px;
-      font-size: 1rem;
+    .hud span {
+      min-width: 130px;
+      padding: 9px 14px;
+      border: 1px solid #49718d;
+      border-radius: 9px;
+      background: #123451;
       font-weight: bold;
-      background: var(--accent);
-      color: #111827;
-      cursor: pointer;
-      transition: transform 0.15s ease;
-    }
-
-    button:hover {
-      transform: translateY(-1px);
     }
 
     canvas {
       display: block;
-      margin: 0 auto;
-      background: #1f2937;
-      border: 4px solid var(--accent);
-      border-radius: 12px;
-      box-shadow: 0 0 30px rgba(251, 191, 36, 0.35);
+      width: 100%;
+      height: auto;
+      border: 4px solid #e7c785;
+      border-radius: 14px;
+      background: #38b9d1;
+      box-shadow: 0 14px 38px #0007;
+    }
+
+    #message {
+      min-height: 22px;
+      color: #fef3c7;
+      font-weight: bold;
+    }
+
+    @media (max-width: 560px) {
+      main {
+        padding: 12px 8px;
+      }
+
+      .hud {
+        gap: 6px;
+      }
+
+      .hud span {
+        min-width: 0;
+        flex: 1;
+        padding: 8px 5px;
+        font-size: 0.9rem;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="panel">
-    <h1>Mi juego 2D</h1>
-    <p>Recoge monedas, evita enemigos y gana el nivel.</p>
-
-    <div class="controls">
-      <button id="startBtn">Jugar</button>
+  <main>
+    <h1>Isla de madera</h1>
+    <p>Explora la isla, tala los árboles con tu hacha y recoge la madera.</p>
+    <div class="hud" aria-live="polite">
+      <span id="woodCount">Madera: 0</span>
+      <span id="treeCount">Árboles: 8</span>
     </div>
-
-    <canvas id="game" width="800" height="500"></canvas>
-  </div>
+    <canvas id="game" width="900" height="560" aria-label="Juego 2D de una isla"></canvas>
+    <p id="message" aria-live="polite">Acércate a un árbol y pulsa E para talarlo.</p>
+    <p>Moverte: flechas o WASD · Talar: E · Recoge los troncos caminando sobre ellos</p>
+  </main>
 
   <script>
     const canvas = document.getElementById('game');
     const ctx = canvas.getContext('2d');
-    const startBtn = document.getElementById('startBtn');
+    const woodCount = document.getElementById('woodCount');
+    const treeCount = document.getElementById('treeCount');
+    const message = document.getElementById('message');
 
     const player = {
-      x: 60,
-      y: 60,
-      width: 28,
-      height: 28,
-      speed: 5,
-      color: '#34d399'
+      x: 380,
+      y: 382,
+      radius: 13,
+      speed: 190,
+      directionX: 0,
+      directionY: -1
     };
 
-    const keys = {
-      ArrowUp: false,
-      ArrowDown: false,
-      ArrowLeft: false,
-      ArrowRight: false
-    };
+    const keys = new Set();
+    const trees = [
+      { x: 290, y: 155, hits: 0, shade: 0 },
+      { x: 445, y: 135, hits: 0, shade: 0 },
+      { x: 600, y: 165, hits: 0, shade: 0 },
+      { x: 230, y: 275, hits: 0, shade: 0 },
+      { x: 675, y: 310, hits: 0, shade: 0 },
+      { x: 305, y: 410, hits: 0, shade: 0 },
+      { x: 520, y: 425, hits: 0, shade: 0 },
+      { x: 615, y: 365, hits: 0, shade: 0 }
+    ];
+    const woodPiles = [];
 
-    const state = {
-      score: 0,
-      lives: 3,
-      level: 1,
-      maxLevels: 3,
-      gameState: 'menu',
-      msg: 'Pulsa Jugar'
-    };
+    let wood = 0;
+    let chopCooldown = 0;
+    let axeSwing = 0;
+    let messageTimer = 0;
+    let previousTime = 0;
 
-    let coins = [];
-    let enemies = [];
-    let invulnerableTimer = 0;
-
-    function resetPlayer() {
-      player.x = 50;
-      player.y = 50;
+    function tellPlayer(text, seconds = 2.5) {
+      message.textContent = text;
+      messageTimer = seconds;
     }
 
-    function buildLevel(level) {
-      coins = [];
-      enemies = [];
-
-      const configs = [
-        {
-          coins: [
-            { x: 170, y: 120 },
-            { x: 300, y: 260 },
-            { x: 550, y: 150 },
-            { x: 660, y: 360 }
-          ],
-          enemies: [
-            { x: 240, y: 150, width: 24, height: 24, speed: 2, minX: 180, maxX: 520, minY: 120, maxY: 200 },
-            { x: 520, y: 300, width: 24, height: 24, speed: 2.5, minX: 420, maxX: 700, minY: 240, maxY: 420 }
-          ]
-        },
-        {
-          coins: [
-            { x: 120, y: 140 },
-            { x: 260, y: 220 },
-            { x: 430, y: 90 },
-            { x: 560, y: 260 },
-            { x: 700, y: 180 }
-          ],
-          enemies: [
-            { x: 160, y: 330, width: 24, height: 24, speed: 2.2, minX: 110, maxX: 330, minY: 260, maxY: 430 },
-            { x: 440, y: 360, width: 24, height: 24, speed: 2.8, minX: 360, maxX: 700, minY: 220, maxY: 420 },
-            { x: 640, y: 100, width: 24, height: 24, speed: 2.4, minX: 560, maxX: 740, minY: 70, maxY: 200 }
-          ]
-        },
-        {
-          coins: [
-            { x: 200, y: 100 },
-            { x: 250, y: 200 },
-            { x: 380, y: 130 },
-            { x: 520, y: 240 },
-            { x: 660, y: 120 },
-            { x: 710, y: 360 }
-          ],
-          enemies: [
-            { x: 120, y: 220, width: 26, height: 26, speed: 2.5, minX: 80, maxX: 240, minY: 170, maxY: 360 },
-            { x: 300, y: 350, width: 26, height: 26, speed: 3, minX: 200, maxX: 540, minY: 260, maxY: 430 },
-            { x: 560, y: 170, width: 26, height: 26, speed: 3.2, minX: 420, maxX: 740, minY: 100, maxY: 240 }
-          ]
-        }
-      ];
-
-      const config = configs[(level - 1) % configs.length];
-
-      config.coins.forEach((coin) => {
-        coins.push({
-          x: coin.x,
-          y: coin.y,
-          size: 11,
-          color: '#facc15'
-        });
-      });
-
-      config.enemies.forEach((enemy) => {
-        enemies.push({
-          x: enemy.x,
-          y: enemy.y,
-          width: enemy.width,
-          height: enemy.height,
-          speed: enemy.speed,
-          minX: enemy.minX,
-          maxX: enemy.maxX,
-          minY: enemy.minY,
-          maxY: enemy.maxY,
-          dx: 1,
-          dy: 1,
-          color: '#ef4444'
-        });
-      });
-    }
-
-    function startGame() {
-      state.score = 0;
-      state.lives = 3;
-      state.level = 1;
-      state.gameState = 'playing';
-      state.msg = 'Nivel 1';
-      resetPlayer();
-      buildLevel(1);
-      startBtn.textContent = 'Reiniciar';
-    }
-
-    function restartLevel() {
-      resetPlayer();
-      buildLevel(state.level);
-      invulnerableTimer = 0;
-    }
-
-    function nextLevel() {
-      if (state.level >= state.maxLevels) {
-        state.gameState = 'won';
-        state.msg = '¡Ganaste!';
-        startBtn.textContent = 'Jugar de nuevo';
-        return;
-      }
-
-      state.level += 1;
-      state.msg = 'Nivel ' + state.level;
-      resetPlayer();
-      buildLevel(state.level);
-    }
-
-    function loseLife() {
-      if (invulnerableTimer > 0) return;
-
-      state.lives -= 1;
-      invulnerableTimer = 120;
-
-      if (state.lives <= 0) {
-        state.gameState = 'gameover';
-        state.msg = 'Game Over';
-        startBtn.textContent = 'Jugar de nuevo';
-        return;
-      }
-
-      resetPlayer();
-    }
-
-    function updatePlayer() {
-      if (keys.ArrowUp) player.y -= player.speed;
-      if (keys.ArrowDown) player.y += player.speed;
-      if (keys.ArrowLeft) player.x -= player.speed;
-      if (keys.ArrowRight) player.x += player.speed;
-
-      player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
-      player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
-    }
-
-    function updateEnemies() {
-      enemies.forEach((enemy) => {
-        enemy.x += enemy.speed * enemy.dx;
-        enemy.y += enemy.speed * enemy.dy;
-
-        if (enemy.x <= enemy.minX || enemy.x + enemy.width >= enemy.maxX) {
-          enemy.dx *= -1;
-          enemy.x = Math.max(enemy.minX, Math.min(enemy.maxX - enemy.width, enemy.x));
-        }
-
-        if (enemy.y <= enemy.minY || enemy.y + enemy.height >= enemy.maxY) {
-          enemy.dy *= -1;
-          enemy.y = Math.max(enemy.minY, Math.min(enemy.maxY - enemy.height, enemy.y));
-        }
-      });
-    }
-
-    function checkCoinCollisions() {
-      for (let i = coins.length - 1; i >= 0; i--) {
-        const coin = coins[i];
-        const hit =
-          player.x < coin.x + coin.size &&
-          player.x + player.width > coin.x &&
-          player.y < coin.y + coin.size &&
-          player.y + player.height > coin.y;
-
-        if (hit) {
-          coins.splice(i, 1);
-          state.score += 10;
-        }
-      }
-    }
-
-    function checkEnemyCollisions() {
-      enemies.forEach((enemy) => {
-        const hit =
-          player.x < enemy.x + enemy.width &&
-          player.x + player.width > enemy.x &&
-          player.y < enemy.y + enemy.height &&
-          player.y + player.height > enemy.y;
-
-        if (hit) {
-          loseLife();
-        }
-      });
-    }
-
-    function update() {
-      if (state.gameState !== 'playing') {
-        return;
-      }
-
-      if (invulnerableTimer > 0) {
-        invulnerableTimer -= 1;
-      }
-
-      updatePlayer();
-      updateEnemies();
-      checkCoinCollisions();
-      checkEnemyCollisions();
-
-      if (coins.length === 0) {
-        nextLevel();
-      }
-    }
-
-    function drawGrid() {
-      ctx.fillStyle = '#0f172a';
+    function drawWater(time) {
+      ctx.fillStyle = '#38b9d1';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
-      ctx.lineWidth = 1;
-
-      for (let x = 0; x < canvas.width; x += 40) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-
-      for (let y = 0; y < canvas.height; y += 40) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
+      for (let row = 0; row < 6; row += 1) {
+        for (let col = 0; col < 11; col += 1) {
+          const x = 35 + col * 84 + (row % 2) * 22;
+          const y = 38 + row * 93 + Math.sin(time * 0.7 + col) * 5;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 11, 3, -0.18, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(224, 250, 255, 0.3)';
+          ctx.fill();
+        }
       }
     }
 
-    function drawPlayer() {
-      ctx.fillStyle = player.color;
-      ctx.fillRect(player.x, player.y, player.width, player.height);
+    function drawIsland() {
+      ctx.save();
+      ctx.shadowColor = '#123b42';
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 10;
+      ctx.beginPath();
+      ctx.ellipse(450, 280, 405, 252, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#e8c47b';
+      ctx.fill();
+      ctx.restore();
 
-      if (invulnerableTimer > 0 && Math.floor(invulnerableTimer / 8) % 2 === 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.35)';
-        ctx.fillRect(player.x - 2, player.y - 2, player.width + 4, player.height + 4);
+      ctx.beginPath();
+      ctx.ellipse(450, 278, 365, 217, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#78b957';
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(450, 278, 365, 217, 0, 0, Math.PI * 2);
+      ctx.clip();
+      for (let i = 0; i < 90; i += 1) {
+        const x = 115 + ((i * 137) % 670);
+        const y = 75 + ((i * 83) % 410);
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5 + (i % 3), 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 ? 'rgba(40, 120, 59, 0.15)' : 'rgba(238, 223, 153, 0.2)';
+        ctx.fill();
+      }
+      ctx.restore();
+
+      for (let i = 0; i < 15; i += 1) {
+        const angle = (i / 15) * Math.PI * 2;
+        const x = 450 + Math.cos(angle) * 386;
+        const y = 280 + Math.sin(angle) * 236;
+        ctx.beginPath();
+        ctx.ellipse(x, y, 9, 5, angle, 0, Math.PI * 2);
+        ctx.fillStyle = '#8a9a8b';
+        ctx.fill();
       }
     }
 
-    function drawCoins() {
-      coins.forEach((coin) => {
+    function drawTree(tree, time) {
+      const shake = tree.shade > 0 ? Math.sin(time * 45) * 4 : 0;
+      ctx.save();
+      ctx.translate(tree.x + shake, tree.y);
+
+      ctx.beginPath();
+      ctx.ellipse(4, 9, 29, 13, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(24, 66, 42, 0.28)';
+      ctx.fill();
+
+      ctx.fillStyle = '#87532e';
+      ctx.fillRect(-8, -10, 16, 26);
+      ctx.strokeStyle = '#bd8751';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-4, -6);
+      ctx.lineTo(-4, 12);
+      ctx.moveTo(3, -8);
+      ctx.lineTo(3, 11);
+      ctx.stroke();
+
+      const leaves = [
+        [-12, -22, 21, '#2f874b'],
+        [10, -24, 23, '#287d45'],
+        [0, -40, 24, '#369451'],
+        [-1, -12, 20, '#3d9b55']
+      ];
+      leaves.forEach(([x, y, radius, color]) => {
         ctx.beginPath();
-        ctx.fillStyle = coin.color;
-        ctx.arc(coin.x, coin.y, coin.size, 0, Math.PI * 2);
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
         ctx.fill();
       });
+
+      ctx.beginPath();
+      ctx.arc(-10, -29, 5, 0, Math.PI * 2);
+      ctx.arc(8, -33, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#9b6335';
+      ctx.fill();
+
+      if (tree.hits > 0) {
+        ctx.fillStyle = '#fff7c2';
+        ctx.font = 'bold 13px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText((3 - tree.hits) + ' golpes', 0, -62);
+      }
+      ctx.restore();
     }
 
-    function drawEnemies() {
-      enemies.forEach((enemy) => {
-        ctx.fillStyle = enemy.color;
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+    function drawPlayer(time) {
+      const moving = keys.size > 0;
+      const walk = moving ? Math.sin(time * 13) * 2 : 0;
+      const angle = Math.atan2(player.directionY, player.directionX) + Math.PI / 2;
+
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(angle);
+
+      ctx.beginPath();
+      ctx.ellipse(2, 10, 15, 8, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(20, 60, 48, 0.27)';
+      ctx.fill();
+
+      ctx.fillStyle = '#27384a';
+      ctx.fillRect(-8, 3 + walk, 6, 12);
+      ctx.fillRect(2, 3 - walk, 6, 12);
+      ctx.fillStyle = '#2756a5';
+      ctx.fillRect(-11, -8, 22, 18);
+      ctx.fillStyle = '#f0c59b';
+      ctx.beginPath();
+      ctx.arc(0, -14, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#553d2b';
+      ctx.beginPath();
+      ctx.arc(-1, -17, 9, Math.PI, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#f0c59b';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(9, -4);
+      ctx.lineTo(14, 2);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(15, 1);
+      ctx.rotate(-axeSwing * 2.3);
+      ctx.strokeStyle = '#81512e';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -23);
+      ctx.stroke();
+      ctx.fillStyle = '#d8e0e5';
+      ctx.beginPath();
+      ctx.moveTo(-2, -20);
+      ctx.lineTo(9, -26);
+      ctx.lineTo(11, -17);
+      ctx.lineTo(1, -15);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function drawWoodPile(pile, time) {
+      ctx.save();
+      ctx.translate(pile.x, pile.y + Math.sin(time * 3 + pile.x) * 2);
+      ctx.fillStyle = 'rgba(31, 63, 48, 0.25)';
+      ctx.beginPath();
+      ctx.ellipse(0, 9, 22, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      for (let i = 0; i < 3; i += 1) {
+        const y = (i - 1) * 8;
+        ctx.fillStyle = '#86502b';
+        ctx.fillRect(-16, y - 3, 31, 7);
+        ctx.fillStyle = '#d6b07a';
+        ctx.beginPath();
+        ctx.ellipse(15, y, 3, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function draw(time) {
+      drawWater(time);
+      drawIsland();
+      trees.forEach((tree) => drawTree(tree, time));
+      woodPiles.forEach((pile) => drawWoodPile(pile, time));
+      drawPlayer(time);
+    }
+
+    function update(delta) {
+      let x = 0;
+      let y = 0;
+      if (keys.has('ArrowLeft') || keys.has('a')) x -= 1;
+      if (keys.has('ArrowRight') || keys.has('d')) x += 1;
+      if (keys.has('ArrowUp') || keys.has('w')) y -= 1;
+      if (keys.has('ArrowDown') || keys.has('s')) y += 1;
+
+      const length = Math.hypot(x, y);
+      if (length > 0) {
+        x /= length;
+        y /= length;
+        player.directionX = x;
+        player.directionY = y;
+        const nextX = player.x + x * player.speed * delta;
+        const nextY = player.y + y * player.speed * delta;
+
+        const islandX = (nextX - 450) / 350;
+        const islandY = (nextY - 278) / 202;
+        if (islandX * islandX + islandY * islandY < 1) {
+          player.x = nextX;
+          player.y = nextY;
+        }
+
+        for (const tree of trees) {
+          const dx = player.x - tree.x;
+          const dy = player.y - tree.y;
+          const distance = Math.hypot(dx, dy);
+          if (distance < 33) {
+            const directionX = distance === 0 ? 1 : dx / distance;
+            const directionY = distance === 0 ? 0 : dy / distance;
+            player.x = tree.x + directionX * 33;
+            player.y = tree.y + directionY * 33;
+          }
+        }
+      }
+
+      chopCooldown = Math.max(0, chopCooldown - delta);
+      axeSwing = Math.max(0, axeSwing - delta * 4.2);
+      trees.forEach((tree) => {
+        tree.shade = Math.max(0, tree.shade - delta);
       });
-    }
 
-    function drawHud() {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 22px Arial';
-      ctx.fillText('Puntaje: ' + state.score, 18, 28);
-      ctx.fillText('Vidas: ' + state.lives, 670, 28);
-      ctx.fillText('Nivel: ' + state.level, 350, 28);
-    }
-
-    function drawMenuOverlay() {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.58)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = '#fef3c7';
-      ctx.font = 'bold 42px Arial';
-      ctx.fillText('Juego 2D', 290, 200);
-
-      ctx.font = '24px Arial';
-      ctx.fillText('Mueve con flechas y recoge monedas', 180, 250);
-      ctx.fillText('Evita a los enemigos', 285, 290);
-      ctx.fillText('Pulsa Jugar para comenzar', 220, 340);
-    }
-
-    function drawEndOverlay() {
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.62)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = '#fef3c7';
-      ctx.font = 'bold 42px Arial';
-      ctx.fillText(state.msg, 285, 220);
-
-      ctx.font = '24px Arial';
-      ctx.fillText('Puntaje final: ' + state.score, 290, 270);
-    }
-
-    function draw() {
-      drawGrid();
-      drawCoins();
-      drawEnemies();
-      drawPlayer();
-      drawHud();
-
-      if (state.gameState === 'menu') {
-        drawMenuOverlay();
+      for (let i = woodPiles.length - 1; i >= 0; i -= 1) {
+        const pile = woodPiles[i];
+        if (Math.hypot(player.x - pile.x, player.y - pile.y) < 27) {
+          wood += 3;
+          woodCount.textContent = 'Madera: ' + wood;
+          woodPiles.splice(i, 1);
+          tellPlayer('¡Recogiste 3 maderas!', 2);
+        }
       }
 
-      if (state.gameState === 'gameover' || state.gameState === 'won') {
-        drawEndOverlay();
+      if (trees.length === 0 && woodPiles.length === 0) {
+        tellPlayer('¡Isla despejada! Recogiste toda la madera.', 0);
       }
+
+      if (messageTimer > 0) {
+        messageTimer -= delta;
+        if (messageTimer <= 0) {
+          message.textContent = 'Acércate a un árbol y pulsa E para talarlo.';
+        }
+      }
+
     }
 
-    function gameLoop() {
-      update();
-      draw();
+    function chopTree() {
+      if (chopCooldown > 0) return;
+      chopCooldown = 0.3;
+      axeSwing = 1;
+
+      let nearest = null;
+      let nearestDistance = 54;
+      trees.forEach((tree) => {
+        const distance = Math.hypot(player.x - tree.x, player.y - tree.y);
+        if (distance < nearestDistance) {
+          nearest = tree;
+          nearestDistance = distance;
+        }
+      });
+
+      if (!nearest) {
+        tellPlayer('Acércate a un árbol para usar el hacha.');
+        return;
+      }
+
+      nearest.hits += 1;
+      nearest.shade = 0.2;
+      if (nearest.hits < 3) {
+        tellPlayer('¡Golpe! Faltan ' + (3 - nearest.hits) + ' golpes.');
+        return;
+      }
+
+      woodPiles.push({ x: nearest.x + 34, y: nearest.y + 4 });
+      trees.splice(trees.indexOf(nearest), 1);
+      treeCount.textContent = 'Árboles: ' + trees.length;
+      tellPlayer('¡Árbol talado! Camina sobre los troncos para recogerlos.');
+    }
+
+    function gameLoop(timestamp) {
+      const time = timestamp * 0.001;
+      const delta = previousTime === 0 ? 0 : Math.min((timestamp - previousTime) / 1000, 0.05);
+      previousTime = timestamp;
+      update(delta);
+      draw(time);
       requestAnimationFrame(gameLoop);
     }
 
-    document.addEventListener('keydown', (event) => {
-      if (keys[event.key] !== undefined) {
-        keys[event.key] = true;
+    window.addEventListener('keydown', (event) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(key)) {
+        event.preventDefault();
       }
+      if (key === 'e' && !keys.has('e')) chopTree();
+      keys.add(key);
     });
 
-    document.addEventListener('keyup', (event) => {
-      if (keys[event.key] !== undefined) {
-        keys[event.key] = false;
-      }
+    window.addEventListener('keyup', (event) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      keys.delete(key);
     });
 
-    startBtn.addEventListener('click', () => {
-      if (state.gameState === 'playing') {
-        startGame();
-        return;
-      }
-
-      startGame();
-    });
-
-    draw();
-    gameLoop();
+    window.addEventListener('blur', () => keys.clear());
+    requestAnimationFrame(gameLoop);
   </script>
 </body>
 </html>
